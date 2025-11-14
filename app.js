@@ -7,6 +7,28 @@
  *   - Application principale :
  *     - Analyse d'un fichier : .xlsx -> tableau affiché, filtres colonnes OK
  *     - Comparaison de fichiers : ref .xlsx + cmp .xlsx -> tableau affiché, cases à cocher en tête, "Mots-clés trouvés" OK
+ * Correctif XLSX (basé sur test-xlsx.html)
+ * Tests manuels :
+ * - test-xlsx.html : un .xlsx se charge et s'affiche en tableau
+ * - Application :
+ *   - Analyse d'un fichier : .xlsx -> tableau s'affiche
+ *   - Comparaison de fichiers : .xlsx ref + .xlsx cmp -> tableaux/colonnes OK
+ *   - Filtrage par colonne + "Mots-clés trouvés" toujours fonctionnels
+ * Correctif XLSX – import depuis input file
+ * - Problème identifié :
+ *   - Les changements de fichier ne produisaient aucun indice exploitable et les erreurs
+ *     d'import XLSX étaient silencieuses, masquant les échecs de parsing.
+ * - Correctifs :
+ *   - Ajout de logs de debug sur toute la chaîne d'import (change event, extension,
+ *     FileReader, présence de SheetJS) avec remontée d'erreurs visibles.
+ *   - Normalisation de l'accès aux fichiers sélectionnés pour éviter les erreurs
+ *     « FileList is not iterable » et garantir l'appel des handlers.
+ *   - Centralisation de l'affichage d'erreurs utilisateur via showError.
+ * - Tests manuels :
+ *   - Import .xlsx en Analyse -> tableau s'affiche
+ *   - Import .csv en Analyse -> OK
+ *   - Import Fichier de référence + Fichier à comparer (.xlsx) -> OK
+ *   - Filtrage par colonne + "Mots-clés trouvés" => toujours fonctionnels
  *
  * Application "Analyseur de fichiers CSV & XLSX"
  * - Mode Analyse d'un fichier
@@ -40,6 +62,9 @@ if (typeof document !== 'undefined') {
 
 function init() {
   console.log('[DEBUG] DOMContentLoaded - initialisation de l\'application');
+document.addEventListener('DOMContentLoaded', init);
+
+function init() {
   setupEventListeners();
 }
 
@@ -77,6 +102,136 @@ function setupEventListeners() {
   analyseInput.addEventListener('change', handleAnalyseFileChange);
   refInput.addEventListener('change', handleRefFileChange);
   cmpInput.addEventListener('change', handleCmpFileChange);
+  analyseInput.addEventListener('change', async (event) => {
+    const file = getFirstFileFromEvent(event);
+    console.log('[APP] handleAnalyseFileChange file =', file && file.name);
+    if (!file) {
+      console.warn('[APP] Aucun fichier sélectionné pour', event.target.id);
+      return;
+    }
+    console.log('[DEBUG] change event', event.target.id, file && file.name);
+    if (!file) {
+      console.warn('[DEBUG] Aucun fichier sélectionné pour', event.target.id);
+      return;
+    }
+  document.getElementById('file-analyse').addEventListener('change', async (event) => {
+    const [file] = event.target.files || [];
+    if (!file) return;
+    try {
+      showStatus('Import du fichier en cours...');
+      state.analyse = await importFile(file);
+      state.selectedColumns = new Set(state.analyse.headers);
+      console.log(
+        '[APP] Données importées (analyse) =',
+        state.analyse.headers.length,
+        'colonnes /',
+        state.analyse.rows.length,
+        'lignes'
+      );
+      renderAnalyseTable();
+      showStatus(`Fichier "${file.name}" importé avec succès.`);
+    } catch (error) {
+      console.error('[IMPORT ANALYSE] Erreur:', error);
+      showError(`Erreur lors de l'import : ${error.message}`);
+    }
+  });
+
+  refInput.addEventListener('change', async (event) => {
+    const file = getFirstFileFromEvent(event);
+    console.log('[APP] handleReferenceFileChange file =', file && file.name);
+    if (!file) {
+      console.warn('[APP] Aucun fichier sélectionné pour', event.target.id);
+      return;
+    }
+    try {
+      showStatus('Import du fichier de référence...');
+      state.comparaison.ref = await importFile(file);
+      console.log(
+        '[APP] Données importées (référence) =',
+        state.comparaison.ref.headers.length,
+        'colonnes /',
+        state.comparaison.ref.rows.length,
+        'lignes'
+      );
+      state.comparaison.keywords = extractKeywordsFromReference(state.comparaison.ref);
+      updateKeywordSummary();
+      showStatus(`Fichier de référence "${file.name}" importé (${state.comparaison.keywords.length} mots-clés).`);
+    console.log('[DEBUG] change event', event.target.id, file && file.name);
+    if (!file) {
+      console.warn('[DEBUG] Aucun fichier sélectionné pour', event.target.id);
+      return;
+    }
+      showStatus(`Fichier \"${file.name}\" importé avec succès.`);
+    } catch (error) {
+      console.error(error);
+      showStatus(`Erreur lors de l'import : ${error.message}`, true);
+    }
+  });
+
+  document.getElementById('file-ref').addEventListener('change', async (event) => {
+    const [file] = event.target.files || [];
+    if (!file) return;
+    try {
+      showStatus('Import du fichier de référence...');
+      state.comparaison.ref = await importFile(file);
+      state.comparaison.keywords = extractKeywordsFromReference(state.comparaison.ref);
+      updateKeywordSummary();
+      showStatus(`Fichier de référence "${file.name}" importé (${state.comparaison.keywords.length} mots-clés).`);
+      showStatus(`Fichier de référence \"${file.name}\" importé (${state.comparaison.keywords.length} mots-clés).`);
+      if (state.comparaison.cmp) {
+        renderComparisonTable();
+      }
+    } catch (error) {
+      console.error('[IMPORT REFERENCE] Erreur:', error);
+      showError(`Erreur lors de l'import du fichier de référence : ${error.message}`);
+    }
+  });
+
+  cmpInput.addEventListener('change', async (event) => {
+    const file = getFirstFileFromEvent(event);
+    console.log('[APP] handleComparisonFileChange file =', file && file.name);
+    if (!file) {
+      console.warn('[APP] Aucun fichier sélectionné pour', event.target.id);
+      return;
+    }
+    try {
+      showStatus('Import du fichier à comparer...');
+      state.comparaison.cmp = await importFile(file);
+      console.log(
+        '[APP] Données importées (comparaison) =',
+        state.comparaison.cmp.headers.length,
+        'colonnes /',
+        state.comparaison.cmp.rows.length,
+        'lignes'
+      );
+    console.log('[DEBUG] change event', event.target.id, file && file.name);
+    if (!file) {
+      console.warn('[DEBUG] Aucun fichier sélectionné pour', event.target.id);
+      return;
+    }
+      console.error(error);
+      showStatus(`Erreur lors de l'import du fichier de référence : ${error.message}`, true);
+    }
+  });
+
+  document.getElementById('file-cmp').addEventListener('change', async (event) => {
+    const [file] = event.target.files || [];
+    if (!file) return;
+    try {
+      showStatus('Import du fichier à comparer...');
+      state.comparaison.cmp = await importFile(file);
+      state.selectedColumns = new Set(state.comparaison.cmp.headers);
+      renderComparisonTable();
+      showStatus(`Fichier à comparer "${file.name}" importé.`);
+    } catch (error) {
+      console.error('[IMPORT COMPARAISON] Erreur:', error);
+      showError(`Erreur lors de l'import du fichier à comparer : ${error.message}`);
+      showStatus(`Fichier à comparer \"${file.name}\" importé.`);
+    } catch (error) {
+      console.error(error);
+      showStatus(`Erreur lors de l'import du fichier à comparer : ${error.message}`, true);
+    }
+  });
 
   const keywordInput = document.getElementById('keywords');
   keywordInput.addEventListener('input', (event) => {
@@ -84,6 +239,8 @@ function setupEventListeners() {
     if (event.target.value !== resolvedValue) {
       event.target.value = resolvedValue;
     }
+  document.getElementById('keywords').addEventListener('input', (event) => {
+    state.filters.keywords = parseKeywords(event.target.value);
     refreshTable();
   });
 
@@ -127,6 +284,9 @@ function getFileExtension(name) {
   const extension = m ? m[1] : '';
   console.log('[APP] getFileExtension', name, '->', extension);
   return extension;
+  console.log('[DEBUG] getFileExtension', name, '->', extension);
+  return extension;
+  return m ? m[1] : '';
 }
 
 function readFileAsText(file) {
@@ -141,6 +301,40 @@ function readFileAsText(file) {
 function readFileAsArrayBuffer(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    reader.onload = () => {
+      const { result } = reader;
+      console.log('[DEBUG] readFileAsArrayBuffer - type de résultat', typeof result, result && result.byteLength);
+      if (result instanceof ArrayBuffer) {
+        resolve(result);
+        return;
+      }
+
+      if (typeof result === 'string') {
+        const buffer = new ArrayBuffer(result.length);
+        const view = new Uint8Array(buffer);
+        for (let i = 0; i < result.length; i++) {
+          view[i] = result.charCodeAt(i) & 0xff;
+        }
+        console.log('[DEBUG] readFileAsArrayBuffer - conversion string -> ArrayBuffer', buffer.byteLength);
+        resolve(buffer);
+        return;
+      }
+
+      reject(new Error('Format de fichier non pris en charge pour la lecture en ArrayBuffer.'));
+    };
+    reader.onerror = () => reject(reader.error);
+
+    if (reader.readAsArrayBuffer) {
+      console.log('[DEBUG] readFileAsArrayBuffer - utilisation de readAsArrayBuffer');
+      reader.readAsArrayBuffer(file);
+    } else if (reader.readAsBinaryString) {
+      console.log('[DEBUG] readFileAsArrayBuffer - fallback readAsBinaryString');
+      reader.readAsArrayBuffer(file);
+    } else if (reader.readAsBinaryString) {
+      reader.readAsBinaryString(file);
+    } else {
+      reject(new Error('Cette plateforme ne permet pas la lecture des fichiers XLSX.'));
+    }
     reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(reader.error);
     reader.readAsArrayBuffer(file);
@@ -264,6 +458,95 @@ function splitCSVLine(line, separator) {
 
   result.push(current.trim());
   return result;
+}
+
+async function importXlsxFile(file) {
+  console.log('[APP] importXlsxFile -> lecture', file && file.name);
+  if (file && typeof file.size === 'number') {
+    console.log('[APP] importXlsxFile file size =', file.size, 'bytes');
+  }
+  const buffer = await readFileAsArrayBuffer(file);
+  console.log('[APP] importXlsxFile buffer length =', buffer.byteLength);
+  console.log('[APP] typeof XLSX =', typeof XLSX);
+function parseXLSX(arrayBuffer) {
+  console.log('[DEBUG] parseXLSX: buffer length', arrayBuffer && arrayBuffer.byteLength);
+  console.log('[DEBUG] XLSX global :', typeof XLSX);
+  if (typeof XLSX === 'undefined') {
+    throw new Error('Bibliothèque SheetJS non disponible. Vérifiez le chargement du CDN.');
+  }
+
+  const workbook = XLSX.read(buffer, { type: 'array' });
+  console.log('[APP] importXlsxFile sheets =', workbook.SheetNames);
+
+  const data = arrayBuffer instanceof ArrayBuffer ? new Uint8Array(arrayBuffer) : arrayBuffer;
+  const workbook = XLSX.read(data, { type: 'array' });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) {
+    throw new Error('Aucune feuille lisible trouvée dans le fichier XLSX.');
+  }
+
+  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+  console.log('[APP] importXlsxFile data rows =', matrix.length);
+
+  return convertMatrixToDataset(matrix);
+}
+
+function convertMatrixToDataset(matrix) {
+  if (!matrix || matrix.length === 0) {
+    return { headers: [], rows: [] };
+  }
+
+  const rawHeaders = matrix[0] || [];
+  const headers = rawHeaders.map((h, i) =>
+    h != null && String(h).trim() !== '' ? String(h).trim() : `Colonne ${i + 1}`
+  );
+
+  const rows = [];
+
+  for (let i = 1; i < matrix.length; i++) {
+    const rowArray = matrix[i] || [];
+    const rowObj = {};
+    headers.forEach((header, index) => {
+      rowObj[header] = rowArray[index] != null ? rowArray[index] : '';
+  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+  const headers = (json[0] || []).map((h, i) => (h && String(h).trim()) || `Colonne ${i + 1}`);
+  const rows = [];
+
+  for (let i = 1; i < json.length; i++) {
+    const rowArray = json[i];
+    if (!rowArray) continue;
+    const rowObj = {};
+    headers.forEach((h, colIndex) => {
+      rowObj[h] = rowArray[colIndex] != null ? rowArray[colIndex] : '';
+    });
+    rows.push(rowObj);
+  }
+
+  return { headers, rows };
+}
+
+async function importFile(file) {
+  console.log('[APP] importFile - fichier reçu', file && file.name);
+  const ext = getFileExtension(file.name);
+  console.log('[APP] Extension détectée :', ext);
+  console.log('[DEBUG] importFile - fichier reçu', file && file.name);
+  const ext = getFileExtension(file.name);
+  console.log('[DEBUG] Extension détectée :', ext);
+  const ext = getFileExtension(file.name);
+  if (ext === 'csv') {
+    const text = await readFileAsText(file);
+    return parseCSV(text);
+  } else if (ext === 'xlsx') {
+    return importXlsxFile(file);
+    const buffer = await readFileAsArrayBuffer(file);
+    return parseXLSX(buffer);
+  }
+  throw new Error('Type de fichier non supporté : ' + ext);
 }
 
 // --- Gestion des mots-clés et filtrage ---
@@ -404,6 +687,7 @@ function renderComparisonTable() {
   const keywords = state.comparaison.keywords;
   if (keywords.length && state.filters.keywords.length === 0) {
     state.filters.keywords = [...keywords];
+    state.filters.keywords = keywords;
     document.getElementById('keywords').value = keywords.join(', ');
   }
   const filteredRows = filterRowsByKeywords(rows, headers);
