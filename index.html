@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analyseur de fichiers CSV &amp; XLSX</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <h1>Analyseur de fichiers CSV &amp; XLSX</h1>
+    <p class="subtitle">Importez, analysez et comparez vos données directement dans le navigateur.</p>
+  </header>
+
+  <main class="app-main">
+    <section class="mode-switch">
+      <label>
+        <input type="radio" name="mode" value="analyse" checked />
+        <span>Analyse d'un fichier</span>
+      </label>
+      <label>
+        <input type="radio" name="mode" value="comparaison" />
+        <span>Comparaison de fichiers</span>
+      </label>
+    </section>
+
+    <section class="import-zone" id="import-zone">
+      <div class="import analyse-import">
+        <label for="file-analyse" class="file-label">Sélectionnez un fichier à analyser</label>
+        <input id="file-analyse" type="file" accept=".csv,.xlsx,.xls" />
+      </div>
+      <div class="import comparaison-import hidden">
+        <div class="file-input-group">
+          <label for="file-ref" class="file-label">Fichier de référence</label>
+          <input id="file-ref" type="file" accept=".csv,.xlsx,.xls" />
+        </div>
+        <div class="file-input-group">
+          <label for="file-cmp" class="file-label">Fichier à comparer</label>
+          <input id="file-cmp" type="file" accept=".csv,.xlsx,.xls" />
+        </div>
+      </div>
+    </section>
+
+    <section class="search-zone">
+      <label for="keywords">Mots-clés (séparés par des virgules)</label>
+      <div class="search-controls">
+        <input id="keywords" type="text" placeholder="ex : vitre, serrure, alu" />
+        <label class="case-sensitive">
+          <input id="case-sensitive" type="checkbox" />
+          Sensible à la casse
+        </label>
+      </div>
+      <div id="status-message" class="status-message"></div>
+    </section>
+
+    <section class="tables-zone">
+      <div id="keyword-summary" class="keyword-summary"></div>
+      <div class="table-wrapper">
+        <table id="data-table">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Application front-end 100% côté navigateur. Aucune donnée n'est envoyée sur un serveur.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
