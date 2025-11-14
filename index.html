@@ -28,11 +28,17 @@
     <section class="import-zone" id="import-zone">
       <div class="import analyse-import">
         <label for="file-analyse" class="file-label">Sélectionnez un fichier à analyser</label>
+        <input id="file-analyse" type="file" accept=".csv,.xlsx,.xls" />
         <input id="file-analyse" type="file" accept=".csv,.xlsx" />
       </div>
       <div class="import comparaison-import hidden">
         <div class="file-input-group">
           <label for="file-ref" class="file-label">Fichier de référence</label>
+          <input id="file-ref" type="file" accept=".csv,.xlsx,.xls" />
+        </div>
+        <div class="file-input-group">
+          <label for="file-cmp" class="file-label">Fichier à comparer</label>
+          <input id="file-cmp" type="file" accept=".csv,.xlsx,.xls" />
           <input id="file-ref" type="file" accept=".csv,.xlsx" />
         </div>
         <div class="file-input-group">
