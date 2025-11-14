@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Test import XLSX</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      background: #f5f5f5;
+      color: #333;
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    #status {
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+      padding: 0.5rem 1rem;
+      background: #fff;
+      border-radius: 4px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+    td, th {
+      border: 1px solid #ddd;
+      padding: 0.5rem;
+      font-size: 0.9rem;
+    }
+    tr:nth-child(even) {
+      background: #f9f9f9;
+    }
+    .log-hint {
+      font-size: 0.85rem;
+      color: #555;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Test import XLSX</h1>
+  <p>Sélectionnez un fichier XLSX pour vérifier le chargement avec SheetJS.</p>
+  <input id="file-xlsx" type="file" accept=".xlsx,.xls" />
+  <div class="log-hint">Ouvrez la console du navigateur pour voir les logs détaillés.</div>
+  <div id="status">En attente d'un fichier...</div>
+  <table id="output"></table>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    const input = document.getElementById('file-xlsx');
+    const statusEl = document.getElementById('status');
+    const tableEl = document.getElementById('output');
+
+    input.addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      console.log('[TEST] change event, file =', file && file.name);
+      if (!file) {
+        statusEl.textContent = 'Aucun fichier sélectionné.';
+        return;
+      }
+
+      statusEl.textContent = 'Lecture du fichier...';
+      console.log('[TEST] file size =', file.size, 'bytes');
+
+      try {
+        const buffer = await readFileAsArrayBuffer(file);
+        console.log('[TEST] buffer length =', buffer.byteLength);
+
+        console.log('[TEST] typeof XLSX =', typeof XLSX);
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        console.log('[TEST] Sheets =', workbook.SheetNames);
+
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        console.log('[TEST] data rows =', data.length);
+        renderTable(data);
+        statusEl.textContent = 'Fichier chargé : ' + file.name;
+      } catch (err) {
+        console.error('[TEST] Erreur import XLSX', err);
+        statusEl.textContent = 'Erreur : ' + err.message;
+      }
+    });
+
+    function readFileAsArrayBuffer(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function renderTable(matrix) {
+      tableEl.innerHTML = '';
+      matrix.forEach((row) => {
+        const tr = document.createElement('tr');
+        row.forEach((cell) => {
+          const td = document.createElement('td');
+          td.textContent = cell != null ? cell : '';
+          tr.appendChild(td);
+        });
+        tableEl.appendChild(tr);
+      });
+    }
+  </script>
+</body>
+</html>

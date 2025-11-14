@@ -1,4 +1,11 @@
 /**
+ * Correctif XLSX (basé sur test-xlsx.html)
+ * Tests manuels :
+ * - test-xlsx.html : un .xlsx se charge et s'affiche en tableau
+ * - Application :
+ *   - Analyse d'un fichier : .xlsx -> tableau s'affiche
+ *   - Comparaison de fichiers : .xlsx ref + .xlsx cmp -> tableaux/colonnes OK
+ *   - Filtrage par colonne + "Mots-clés trouvés" toujours fonctionnels
  * Correctif XLSX – import depuis input file
  * - Problème identifié :
  *   - Les changements de fichier ne produisaient aucun indice exploitable et les erreurs
@@ -84,6 +91,11 @@ function setupEventListeners() {
 
   analyseInput.addEventListener('change', async (event) => {
     const file = getFirstFileFromEvent(event);
+    console.log('[APP] handleAnalyseFileChange file =', file && file.name);
+    if (!file) {
+      console.warn('[APP] Aucun fichier sélectionné pour', event.target.id);
+      return;
+    }
     console.log('[DEBUG] change event', event.target.id, file && file.name);
     if (!file) {
       console.warn('[DEBUG] Aucun fichier sélectionné pour', event.target.id);
@@ -96,6 +108,13 @@ function setupEventListeners() {
       showStatus('Import du fichier en cours...');
       state.analyse = await importFile(file);
       state.selectedColumns = new Set(state.analyse.headers);
+      console.log(
+        '[APP] Données importées (analyse) =',
+        state.analyse.headers.length,
+        'colonnes /',
+        state.analyse.rows.length,
+        'lignes'
+      );
       renderAnalyseTable();
       showStatus(`Fichier "${file.name}" importé avec succès.`);
     } catch (error) {
@@ -106,6 +125,24 @@ function setupEventListeners() {
 
   refInput.addEventListener('change', async (event) => {
     const file = getFirstFileFromEvent(event);
+    console.log('[APP] handleReferenceFileChange file =', file && file.name);
+    if (!file) {
+      console.warn('[APP] Aucun fichier sélectionné pour', event.target.id);
+      return;
+    }
+    try {
+      showStatus('Import du fichier de référence...');
+      state.comparaison.ref = await importFile(file);
+      console.log(
+        '[APP] Données importées (référence) =',
+        state.comparaison.ref.headers.length,
+        'colonnes /',
+        state.comparaison.ref.rows.length,
+        'lignes'
+      );
+      state.comparaison.keywords = extractKeywordsFromReference(state.comparaison.ref);
+      updateKeywordSummary();
+      showStatus(`Fichier de référence "${file.name}" importé (${state.comparaison.keywords.length} mots-clés).`);
     console.log('[DEBUG] change event', event.target.id, file && file.name);
     if (!file) {
       console.warn('[DEBUG] Aucun fichier sélectionné pour', event.target.id);
@@ -139,6 +176,21 @@ function setupEventListeners() {
 
   cmpInput.addEventListener('change', async (event) => {
     const file = getFirstFileFromEvent(event);
+    console.log('[APP] handleComparisonFileChange file =', file && file.name);
+    if (!file) {
+      console.warn('[APP] Aucun fichier sélectionné pour', event.target.id);
+      return;
+    }
+    try {
+      showStatus('Import du fichier à comparer...');
+      state.comparaison.cmp = await importFile(file);
+      console.log(
+        '[APP] Données importées (comparaison) =',
+        state.comparaison.cmp.headers.length,
+        'colonnes /',
+        state.comparaison.cmp.rows.length,
+        'lignes'
+      );
     console.log('[DEBUG] change event', event.target.id, file && file.name);
     if (!file) {
       console.warn('[DEBUG] Aucun fichier sélectionné pour', event.target.id);
@@ -217,6 +269,8 @@ function refreshTable() {
 function getFileExtension(name) {
   const m = name.toLowerCase().match(/\.([^.]+)$/);
   const extension = m ? m[1] : '';
+  console.log('[APP] getFileExtension', name, '->', extension);
+  return extension;
   console.log('[DEBUG] getFileExtension', name, '->', extension);
   return extension;
   return m ? m[1] : '';
@@ -352,12 +406,23 @@ function splitCSVLine(line, separator) {
   return result;
 }
 
+async function importXlsxFile(file) {
+  console.log('[APP] importXlsxFile -> lecture', file && file.name);
+  if (file && typeof file.size === 'number') {
+    console.log('[APP] importXlsxFile file size =', file.size, 'bytes');
+  }
+  const buffer = await readFileAsArrayBuffer(file);
+  console.log('[APP] importXlsxFile buffer length =', buffer.byteLength);
+  console.log('[APP] typeof XLSX =', typeof XLSX);
 function parseXLSX(arrayBuffer) {
   console.log('[DEBUG] parseXLSX: buffer length', arrayBuffer && arrayBuffer.byteLength);
   console.log('[DEBUG] XLSX global :', typeof XLSX);
   if (typeof XLSX === 'undefined') {
     throw new Error('Bibliothèque SheetJS non disponible. Vérifiez le chargement du CDN.');
   }
+
+  const workbook = XLSX.read(buffer, { type: 'array' });
+  console.log('[APP] importXlsxFile sheets =', workbook.SheetNames);
 
   const data = arrayBuffer instanceof ArrayBuffer ? new Uint8Array(arrayBuffer) : arrayBuffer;
   const workbook = XLSX.read(data, { type: 'array' });
@@ -366,6 +431,30 @@ function parseXLSX(arrayBuffer) {
   if (!sheet) {
     throw new Error('Aucune feuille lisible trouvée dans le fichier XLSX.');
   }
+
+  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+  console.log('[APP] importXlsxFile data rows =', matrix.length);
+
+  return convertMatrixToDataset(matrix);
+}
+
+function convertMatrixToDataset(matrix) {
+  if (!matrix || matrix.length === 0) {
+    return { headers: [], rows: [] };
+  }
+
+  const rawHeaders = matrix[0] || [];
+  const headers = rawHeaders.map((h, i) =>
+    h != null && String(h).trim() !== '' ? String(h).trim() : `Colonne ${i + 1}`
+  );
+
+  const rows = [];
+
+  for (let i = 1; i < matrix.length; i++) {
+    const rowArray = matrix[i] || [];
+    const rowObj = {};
+    headers.forEach((header, index) => {
+      rowObj[header] = rowArray[index] != null ? rowArray[index] : '';
   const workbook = XLSX.read(arrayBuffer, { type: 'array' });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
@@ -388,6 +477,9 @@ function parseXLSX(arrayBuffer) {
 }
 
 async function importFile(file) {
+  console.log('[APP] importFile - fichier reçu', file && file.name);
+  const ext = getFileExtension(file.name);
+  console.log('[APP] Extension détectée :', ext);
   console.log('[DEBUG] importFile - fichier reçu', file && file.name);
   const ext = getFileExtension(file.name);
   console.log('[DEBUG] Extension détectée :', ext);
@@ -396,6 +488,7 @@ async function importFile(file) {
     const text = await readFileAsText(file);
     return parseCSV(text);
   } else if (ext === 'xlsx') {
+    return importXlsxFile(file);
     const buffer = await readFileAsArrayBuffer(file);
     return parseXLSX(buffer);
   }
