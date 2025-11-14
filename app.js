@@ -161,6 +161,34 @@ function readFileAsText(file) {
 function readFileAsArrayBuffer(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    reader.onload = () => {
+      const { result } = reader;
+      if (result instanceof ArrayBuffer) {
+        resolve(result);
+        return;
+      }
+
+      if (typeof result === 'string') {
+        const buffer = new ArrayBuffer(result.length);
+        const view = new Uint8Array(buffer);
+        for (let i = 0; i < result.length; i++) {
+          view[i] = result.charCodeAt(i) & 0xff;
+        }
+        resolve(buffer);
+        return;
+      }
+
+      reject(new Error('Format de fichier non pris en charge pour la lecture en ArrayBuffer.'));
+    };
+    reader.onerror = () => reject(reader.error);
+
+    if (reader.readAsArrayBuffer) {
+      reader.readAsArrayBuffer(file);
+    } else if (reader.readAsBinaryString) {
+      reader.readAsBinaryString(file);
+    } else {
+      reject(new Error('Cette plateforme ne permet pas la lecture des fichiers XLSX.'));
+    }
     reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(reader.error);
     reader.readAsArrayBuffer(file);
@@ -245,6 +273,17 @@ function splitCSVLine(line, separator) {
 }
 
 function parseXLSX(arrayBuffer) {
+  if (typeof XLSX === 'undefined') {
+    throw new Error('Bibliothèque SheetJS non disponible. Vérifiez le chargement du CDN.');
+  }
+
+  const data = arrayBuffer instanceof ArrayBuffer ? new Uint8Array(arrayBuffer) : arrayBuffer;
+  const workbook = XLSX.read(data, { type: 'array' });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) {
+    throw new Error('Aucune feuille lisible trouvée dans le fichier XLSX.');
+  }
   const workbook = XLSX.read(arrayBuffer, { type: 'array' });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
