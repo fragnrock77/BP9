@@ -23,6 +23,9 @@ const state = {
 };
 
 // --- Initialisation de l'application ---
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', init);
+}
 document.addEventListener('DOMContentLoaded', init);
 
 function init() {
@@ -95,6 +98,12 @@ function setupEventListeners() {
     }
   });
 
+  const keywordInput = document.getElementById('keywords');
+  keywordInput.addEventListener('input', (event) => {
+    const resolvedValue = handleKeywordInputChange(event.target.value);
+    if (event.target.value !== resolvedValue) {
+      event.target.value = resolvedValue;
+    }
   document.getElementById('keywords').addEventListener('input', (event) => {
     state.filters.keywords = parseKeywords(event.target.value);
     refreshTable();
@@ -375,6 +384,24 @@ function filterRowsByKeywords(rows, headers) {
   return filtered;
 }
 
+function handleKeywordInputChange(rawValue) {
+  const parsed = parseKeywords(rawValue);
+
+  if (
+    parsed.length === 0 &&
+    state.mode === 'comparaison' &&
+    state.comparaison.keywords.length > 0
+  ) {
+    // En comparaison, si l'utilisateur efface la recherche, on revient
+    // automatiquement aux mots-clés extraits du fichier de référence.
+    state.filters.keywords = [...state.comparaison.keywords];
+    return state.comparaison.keywords.join(', ');
+  }
+
+  state.filters.keywords = parsed;
+  return rawValue;
+}
+
 // --- Rendu des tableaux ---
 function renderAnalyseTable() {
   if (!state.analyse) return;
@@ -388,6 +415,7 @@ function renderComparisonTable() {
   const { headers, rows } = state.comparaison.cmp;
   const keywords = state.comparaison.keywords;
   if (keywords.length && state.filters.keywords.length === 0) {
+    state.filters.keywords = [...keywords];
     state.filters.keywords = keywords;
     document.getElementById('keywords').value = keywords.join(', ');
   }
@@ -488,3 +516,29 @@ function showStatus(message, isError = false) {
 // 3. Importer un fichier de référence + un fichier à comparer en mode Comparaison → vérifier le nombre de mots-clés et le filtrage.
 // 4. Cocher/décocher des colonnes → vérifier que seules les colonnes cochées sont utilisées pour la recherche.
 // 5. Décochez toutes les colonnes → vérifier la réactivation automatique et le message d'état.
+
+if (typeof window !== 'undefined') {
+  window.__CSVAnalyzer__ = {
+    state,
+    parseCSV,
+    parseKeywords,
+    filterRowsByKeywords,
+    detectCSVSeparator,
+    splitCSVLine,
+    extractKeywordsFromReference,
+    handleKeywordInputChange,
+  };
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    state,
+    parseCSV,
+    parseKeywords,
+    filterRowsByKeywords,
+    detectCSVSeparator,
+    splitCSVLine,
+    extractKeywordsFromReference,
+    handleKeywordInputChange,
+  };
+}
