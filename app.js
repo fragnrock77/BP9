@@ -26,6 +26,7 @@ const state = {
 if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', init);
 }
+document.addEventListener('DOMContentLoaded', init);
 
 function init() {
   setupEventListeners();
@@ -103,6 +104,8 @@ function setupEventListeners() {
     if (event.target.value !== resolvedValue) {
       event.target.value = resolvedValue;
     }
+  document.getElementById('keywords').addEventListener('input', (event) => {
+    state.filters.keywords = parseKeywords(event.target.value);
     refreshTable();
   });
 
@@ -186,6 +189,9 @@ function readFileAsArrayBuffer(file) {
     } else {
       reject(new Error('Cette plateforme ne permet pas la lecture des fichiers XLSX.'));
     }
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(file);
   });
 }
 
@@ -278,6 +284,9 @@ function parseXLSX(arrayBuffer) {
   if (!sheet) {
     throw new Error('Aucune feuille lisible trouvée dans le fichier XLSX.');
   }
+  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
   const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
   const headers = (json[0] || []).map((h, i) => (h && String(h).trim()) || `Colonne ${i + 1}`);
@@ -446,6 +455,7 @@ function renderComparisonTable() {
   const keywords = state.comparaison.keywords;
   if (keywords.length && state.filters.keywords.length === 0) {
     state.filters.keywords = [...keywords];
+    state.filters.keywords = keywords;
     document.getElementById('keywords').value = keywords.join(', ');
   }
   const filteredRows = filterRowsByKeywords(rows, headers);
