@@ -45,6 +45,9 @@ if (typeof document !== 'undefined') {
 
 function init() {
   console.log('[DEBUG] DOMContentLoaded - initialisation de l\'application');
+document.addEventListener('DOMContentLoaded', init);
+
+function init() {
   setupEventListeners();
 }
 
@@ -86,6 +89,9 @@ function setupEventListeners() {
       console.warn('[DEBUG] Aucun fichier sélectionné pour', event.target.id);
       return;
     }
+  document.getElementById('file-analyse').addEventListener('change', async (event) => {
+    const [file] = event.target.files || [];
+    if (!file) return;
     try {
       showStatus('Import du fichier en cours...');
       state.analyse = await importFile(file);
@@ -105,12 +111,23 @@ function setupEventListeners() {
       console.warn('[DEBUG] Aucun fichier sélectionné pour', event.target.id);
       return;
     }
+      showStatus(`Fichier \"${file.name}\" importé avec succès.`);
+    } catch (error) {
+      console.error(error);
+      showStatus(`Erreur lors de l'import : ${error.message}`, true);
+    }
+  });
+
+  document.getElementById('file-ref').addEventListener('change', async (event) => {
+    const [file] = event.target.files || [];
+    if (!file) return;
     try {
       showStatus('Import du fichier de référence...');
       state.comparaison.ref = await importFile(file);
       state.comparaison.keywords = extractKeywordsFromReference(state.comparaison.ref);
       updateKeywordSummary();
       showStatus(`Fichier de référence "${file.name}" importé (${state.comparaison.keywords.length} mots-clés).`);
+      showStatus(`Fichier de référence \"${file.name}\" importé (${state.comparaison.keywords.length} mots-clés).`);
       if (state.comparaison.cmp) {
         renderComparisonTable();
       }
@@ -127,6 +144,14 @@ function setupEventListeners() {
       console.warn('[DEBUG] Aucun fichier sélectionné pour', event.target.id);
       return;
     }
+      console.error(error);
+      showStatus(`Erreur lors de l'import du fichier de référence : ${error.message}`, true);
+    }
+  });
+
+  document.getElementById('file-cmp').addEventListener('change', async (event) => {
+    const [file] = event.target.files || [];
+    if (!file) return;
     try {
       showStatus('Import du fichier à comparer...');
       state.comparaison.cmp = await importFile(file);
@@ -136,6 +161,10 @@ function setupEventListeners() {
     } catch (error) {
       console.error('[IMPORT COMPARAISON] Erreur:', error);
       showError(`Erreur lors de l'import du fichier à comparer : ${error.message}`);
+      showStatus(`Fichier à comparer \"${file.name}\" importé.`);
+    } catch (error) {
+      console.error(error);
+      showStatus(`Erreur lors de l'import du fichier à comparer : ${error.message}`, true);
     }
   });
 
@@ -145,6 +174,8 @@ function setupEventListeners() {
     if (event.target.value !== resolvedValue) {
       event.target.value = resolvedValue;
     }
+  document.getElementById('keywords').addEventListener('input', (event) => {
+    state.filters.keywords = parseKeywords(event.target.value);
     refreshTable();
   });
 
@@ -188,6 +219,7 @@ function getFileExtension(name) {
   const extension = m ? m[1] : '';
   console.log('[DEBUG] getFileExtension', name, '->', extension);
   return extension;
+  return m ? m[1] : '';
 }
 
 function readFileAsText(file) {
@@ -230,10 +262,15 @@ function readFileAsArrayBuffer(file) {
       reader.readAsArrayBuffer(file);
     } else if (reader.readAsBinaryString) {
       console.log('[DEBUG] readFileAsArrayBuffer - fallback readAsBinaryString');
+      reader.readAsArrayBuffer(file);
+    } else if (reader.readAsBinaryString) {
       reader.readAsBinaryString(file);
     } else {
       reject(new Error('Cette plateforme ne permet pas la lecture des fichiers XLSX.'));
     }
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(file);
   });
 }
 
@@ -329,6 +366,9 @@ function parseXLSX(arrayBuffer) {
   if (!sheet) {
     throw new Error('Aucune feuille lisible trouvée dans le fichier XLSX.');
   }
+  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
   const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
   const headers = (json[0] || []).map((h, i) => (h && String(h).trim()) || `Colonne ${i + 1}`);
@@ -351,6 +391,7 @@ async function importFile(file) {
   console.log('[DEBUG] importFile - fichier reçu', file && file.name);
   const ext = getFileExtension(file.name);
   console.log('[DEBUG] Extension détectée :', ext);
+  const ext = getFileExtension(file.name);
   if (ext === 'csv') {
     const text = await readFileAsText(file);
     return parseCSV(text);
@@ -499,6 +540,7 @@ function renderComparisonTable() {
   const keywords = state.comparaison.keywords;
   if (keywords.length && state.filters.keywords.length === 0) {
     state.filters.keywords = [...keywords];
+    state.filters.keywords = keywords;
     document.getElementById('keywords').value = keywords.join(', ');
   }
   const filteredRows = filterRowsByKeywords(rows, headers);
