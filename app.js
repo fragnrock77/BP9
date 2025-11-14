@@ -26,6 +26,7 @@ const state = {
 if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', init);
 }
+document.addEventListener('DOMContentLoaded', init);
 
 function init() {
   setupEventListeners();
@@ -103,6 +104,8 @@ function setupEventListeners() {
     if (event.target.value !== resolvedValue) {
       event.target.value = resolvedValue;
     }
+  document.getElementById('keywords').addEventListener('input', (event) => {
+    state.filters.keywords = parseKeywords(event.target.value);
     refreshTable();
   });
 
@@ -413,6 +416,7 @@ function renderComparisonTable() {
   const keywords = state.comparaison.keywords;
   if (keywords.length && state.filters.keywords.length === 0) {
     state.filters.keywords = [...keywords];
+    state.filters.keywords = keywords;
     document.getElementById('keywords').value = keywords.join(', ');
   }
   const filteredRows = filterRowsByKeywords(rows, headers);
